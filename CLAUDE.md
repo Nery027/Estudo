@@ -59,8 +59,8 @@ App web de controle financeiro pessoal. O usuário é **iniciante em programaç�
 
 ## Hospedagem (GitHub Pages)
 
-- O app é um site estático: `npm run build` gera a pasta `dist`, publicada pelo GitHub Pages em `https://SEU-USUARIO.github.io/controle-financeiro/`.
-- `vite.config.ts` usa `base: '/controle-financeiro/'` **só no build** (o `npm run dev` continua em `localhost:5173`). Se o repositório tiver outro nome, trocar `REPO_NAME` lá.
+- O app é um site estático: `npm run build` gera a pasta `dist`, publicada pelo GitHub Pages em `https://nery027.github.io/Estudo/`.
+- `vite.config.ts` usa `base: '/Estudo/'` **só no build** (o `npm run dev` continua em `localhost:5173`). Se o repositório tiver outro nome, trocar `REPO_NAME` lá.
 - Publicação automática: `.github/workflows/deploy.yml` roda `npm ci`, `npm test` e `npm run build` a cada push na `main`, e só publica se tudo passar.
 - Os dados continuam no navegador de cada aparelho (localStorage): celular e computador **não sincronizam**. Sem backup, limpar os dados do navegador apaga tudo.
 - O endereço é público, mas cada pessoa só vê os dados do próprio navegador.
