@@ -54,7 +54,8 @@ export type NewEntry =
   | (NewEntryBase & { mode: 'installments'; totalCents: number; count: number })
   | (NewEntryBase & { mode: 'recurring'; amountCents: number; endDate?: string })
 
-// Conta de usuário como fica guardada no navegador (nunca guarda a senha em si)
+// Conta LOCAL antiga (do tempo em que o login era só no navegador).
+// Hoje só serve para ler esses dados e importá-los para a nuvem.
 export interface User {
   id: string
   name: string
@@ -65,8 +66,13 @@ export interface User {
   photo?: string
 }
 
-// Dados do usuário que o resto do app pode ver (sem salt nem hash)
-export type PublicUser = Pick<User, 'id' | 'name' | 'email' | 'photo'>
+// Usuário logado (conta do Supabase + nome e foto do perfil)
+export interface PublicUser {
+  id: string
+  name: string
+  email: string
+  photo?: string
+}
 
 export const EXPENSE_CATEGORIES = [
   'Moradia',

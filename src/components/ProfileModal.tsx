@@ -6,7 +6,7 @@ import { PhotoPicker } from './PhotoPicker'
 
 interface Props {
   user: PublicUser
-  onSavePhoto: (photo: string | null) => AuthResult
+  onSavePhoto: (photo: string | null) => Promise<AuthResult>
   onClose: () => void
 }
 
@@ -14,13 +14,20 @@ interface Props {
 export function ProfileModal({ user, onSavePhoto, onClose }: Props) {
   const [photo, setPhoto] = useState<string | null>(user.photo ?? null)
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const changed = photo !== (user.photo ?? null)
 
-  function handleSave() {
-    const result = onSavePhoto(photo)
-    if (result.ok) onClose()
-    else setError(result.error)
+  async function handleSave() {
+    setSaving(true)
+    setError('')
+    const result = await onSavePhoto(photo)
+    if (result.ok) {
+      onClose()
+    } else {
+      setError(result.error)
+      setSaving(false)
+    }
   }
 
   return (
@@ -58,10 +65,10 @@ export function ProfileModal({ user, onSavePhoto, onClose }: Props) {
         <button
           type="button"
           onClick={handleSave}
-          disabled={!changed}
+          disabled={!changed || saving}
           className="rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
         >
-          Salvar
+          {saving ? 'Salvando...' : 'Salvar'}
         </button>
       </div>
     </Modal>

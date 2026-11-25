@@ -4,6 +4,7 @@ import { Avatar } from './components/Avatar'
 import { CategoryChart } from './components/CategoryChart'
 import { DeleteDialog } from './components/DeleteDialog'
 import { EditTransactionModal } from './components/EditTransactionModal'
+import { ImportLocalDataBanner } from './components/ImportLocalDataBanner'
 import { ProfileModal } from './components/ProfileModal'
 import { MonthlyChart } from './components/MonthlyChart'
 import { Summary } from './components/Summary'
@@ -17,12 +18,13 @@ import type { LedgerItem } from './utils/ledger'
 interface Props {
   user: PublicUser
   onLogout: () => void
-  onSavePhoto: (photo: string | null) => AuthResult
+  onSavePhoto: (photo: string | null) => Promise<AuthResult>
 }
 
 // A tela principal do controle financeiro (só aparece para quem está logado).
 export default function Dashboard({ user, onLogout, onSavePhoto }: Props) {
-  const { getItems, addEntry, removeItem, updateItem } = useTransactions(user.id)
+  const { status, syncError, dismissError, reload, getItems, addEntry, removeItem, updateItem } =
+    useTransactions(user.id)
   const [month, setMonth] = useState(monthKey(todayISO()))
   const [profileOpen, setProfileOpen] = useState(false)
   const [editing, setEditing] = useState<LedgerItem | null>(null)
@@ -105,17 +107,61 @@ export default function Dashboard({ user, onLogout, onSavePhoto }: Props) {
       </header>
 
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-        <Summary incomeCents={incomeCents} expenseCents={expenseCents} />
+        {status === 'loading' && (
+          <p role="status" className="rounded-xl bg-white p-5 text-center text-slate-600 shadow-sm">
+            Carregando seus dados...
+          </p>
+        )}
 
-        <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
-          <TransactionForm onAdd={addEntry} />
-          <TransactionList items={monthItems} onEdit={setEditing} onDelete={setDeleting} />
-        </div>
+        {status === 'error' && (
+          <div role="alert" className="rounded-xl bg-white p-5 text-center shadow-sm">
+            <p className="mb-3 text-red-700">
+              Não foi possível carregar seus dados. Verifique sua conexão e se as tabelas do
+              Supabase foram criadas.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800"
+            >
+              Tentar de novo
+            </button>
+          </div>
+        )}
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <CategoryChart items={monthItems} />
-          <MonthlyChart getItems={getItems} endMonth={month} />
-        </div>
+        {syncError && (
+          <div
+            role="alert"
+            className="flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+          >
+            <p>{syncError}</p>
+            <button
+              type="button"
+              onClick={dismissError}
+              className="shrink-0 font-medium underline hover:text-red-900"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
+
+        {status === 'ready' && (
+          <>
+            <ImportLocalDataBanner user={user} onSavePhoto={onSavePhoto} onImported={reload} />
+
+            <Summary incomeCents={incomeCents} expenseCents={expenseCents} />
+
+            <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
+              <TransactionForm onAdd={addEntry} />
+              <TransactionList items={monthItems} onEdit={setEditing} onDelete={setDeleting} />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <CategoryChart items={monthItems} />
+              <MonthlyChart getItems={getItems} endMonth={month} />
+            </div>
+          </>
+        )}
       </main>
 
       {editing && (

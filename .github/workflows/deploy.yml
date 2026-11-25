@@ -29,7 +29,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # As chaves do Supabase vêm dos Secrets do repositório (Settings > Secrets and
+      # variables > Actions). A chave "anon" é pública por natureza; a proteção dos
+      # dados é feita pelas regras (RLS) do banco.
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

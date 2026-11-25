@@ -13,7 +13,9 @@ export function Modal({ title, onClose, children }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null)
   // Guarda a versão mais recente de onClose sem refazer o efeito a cada render
   const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
 
   useEffect(() => {
     dialogRef.current?.focus()

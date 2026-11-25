@@ -1,20 +1,15 @@
 // Único lugar do app que lê e grava no localStorage.
+//
+// Desde que o app usa o Supabase, os dados de verdade ficam na nuvem. O
+// localStorage serve só para: (1) ler os dados ANTIGOS deste navegador, para
+// importá-los uma vez; (2) guardar marcações pequenas (o que já foi importado
+// e uma foto de cadastro à espera do primeiro login).
+// A sessão de login é guardada pela própria biblioteca do Supabase.
 import type { Recurrence, Transaction, User } from './types'
 
 const USERS_KEY = 'financeiro:users'
-const SESSION_KEY = 'financeiro:session'
-// Chave antiga (antes do login existir): todas as transações juntas
-const LEGACY_TRANSACTIONS_KEY = 'financeiro:transactions'
-
-// Cada usuário tem a própria lista de transações
-function transactionsKey(userId: string): string {
-  return `financeiro:transactions:${userId}`
-}
-
-// Recorrências de cada usuário ficam numa chave própria
-function recurrencesKey(userId: string): string {
-  return `financeiro:recurrences:${userId}`
-}
+const IMPORTED_PREFIX = 'financeiro:imported:'
+const PENDING_PHOTO_PREFIX = 'financeiro:pending-photo:'
 
 function readJson(key: string): unknown {
   try {
@@ -23,16 +18,6 @@ function readJson(key: string): unknown {
   } catch {
     // Dados corrompidos ou localStorage indisponível
     return null
-  }
-}
-
-// Retorna false se não conseguiu salvar (sem espaço, modo privado etc.)
-function writeJson(key: string, value: unknown): boolean {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-    return true
-  } catch {
-    return false
   }
 }
 
@@ -88,72 +73,72 @@ function isUser(value: unknown): value is User {
   )
 }
 
-// ---------- Transações (por usuário) ----------
+// ---------- Dados antigos deste navegador (só leitura) ----------
 
-export function loadTransactions(userId: string): Transaction[] {
-  const data = readJson(transactionsKey(userId))
-  // Ignora itens inválidos em vez de quebrar o app inteiro
-  return Array.isArray(data) ? data.filter(isTransaction) : []
+export interface LocalAccount {
+  id: string
+  name: string
+  email: string
+  photo?: string
+  transactions: Transaction[]
+  recurrences: Recurrence[]
+  imported: boolean
 }
 
-export function saveTransactions(userId: string, transactions: Transaction[]): void {
-  writeJson(transactionsKey(userId), transactions)
+// Contas locais antigas deste navegador, com os dados de cada uma.
+export function loadLocalAccounts(): LocalAccount[] {
+  const users = readJson(USERS_KEY)
+  if (!Array.isArray(users)) return []
+
+  return users.filter(isUser).map((user) => {
+    const transactions = readJson(`financeiro:transactions:${user.id}`)
+    const recurrences = readJson(`financeiro:recurrences:${user.id}`)
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      photo: user.photo,
+      transactions: Array.isArray(transactions) ? transactions.filter(isTransaction) : [],
+      recurrences: Array.isArray(recurrences) ? recurrences.filter(isRecurrence) : [],
+      imported: localStorage.getItem(IMPORTED_PREFIX + user.id) !== null,
+    }
+  })
 }
 
-export function loadRecurrences(userId: string): Recurrence[] {
-  const data = readJson(recurrencesKey(userId))
-  return Array.isArray(data) ? data.filter(isRecurrence) : []
-}
-
-export function saveRecurrences(userId: string, recurrences: Recurrence[]): void {
-  writeJson(recurrencesKey(userId), recurrences)
-}
-
-// Passa as transações da chave antiga para o usuário informado (uma única vez).
-export function migrateLegacyTransactions(userId: string): void {
-  const legacy = readJson(LEGACY_TRANSACTIONS_KEY)
-  if (!Array.isArray(legacy)) return
-  writeJson(transactionsKey(userId), legacy.filter(isTransaction))
+// Marca uma conta local como já importada (some o botão de importar).
+export function markLocalAccountImported(localUserId: string, cloudUserId: string): void {
   try {
-    localStorage.removeItem(LEGACY_TRANSACTIONS_KEY)
+    localStorage.setItem(IMPORTED_PREFIX + localUserId, cloudUserId)
   } catch {
-    // sem problema: só não limpou a chave antiga
+    // sem problema: o botão só continua aparecendo (importar de novo não duplica)
   }
 }
 
-// ---------- Usuários ----------
+// ---------- Foto escolhida no cadastro, à espera do primeiro login ----------
 
-export function loadUsers(): User[] {
-  const data = readJson(USERS_KEY)
-  return Array.isArray(data) ? data.filter(isUser) : []
+function pendingPhotoKey(email: string): string {
+  return PENDING_PHOTO_PREFIX + email.trim().toLowerCase()
 }
 
-// Retorna false se não conseguiu salvar
-export function saveUsers(users: User[]): boolean {
-  return writeJson(USERS_KEY, users)
-}
-
-// ---------- Sessão (quem está logado) ----------
-
-export function getSessionUserId(): string | null {
+export function setPendingPhoto(email: string, photo: string): void {
   try {
-    return localStorage.getItem(SESSION_KEY)
+    localStorage.setItem(pendingPhotoKey(email), photo)
+  } catch {
+    // sem espaço: a pessoa pode colocar a foto depois, em "Meu perfil"
+  }
+}
+
+export function getPendingPhoto(email: string): string | null {
+  try {
+    return localStorage.getItem(pendingPhotoKey(email))
   } catch {
     return null
   }
 }
 
-export function setSessionUserId(userId: string): void {
+export function clearPendingPhoto(email: string): void {
   try {
-    localStorage.setItem(SESSION_KEY, userId)
-  } catch {
-    // sem problema: o login só não sobrevive ao recarregar
-  }
-}
-
-export function clearSession(): void {
-  try {
-    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(pendingPhotoKey(email))
   } catch {
     // nada a fazer
   }
