@@ -33,6 +33,9 @@ export interface LedgerItem {
   transactionId?: string // single e installment
   installment?: { groupId: string; number: number; total: number }
   recurrenceId?: string // recurring
+  // Data em que ESTE item foi marcado como pago. Sem valor = pendente.
+  // Só despesas têm pagamento; receitas ficam sempre sem este campo.
+  paidAt?: string
 }
 
 // O que pode ser alterado numa edição. Só as chaves presentes são aplicadas.
@@ -68,6 +71,7 @@ export function getMonthItems(ledger: Ledger, month: string): LedgerItem[] {
       month,
       transactionId: t.id,
       installment: t.installment,
+      paidAt: t.type === 'despesa' ? t.paidAt : undefined,
     })
   }
 
@@ -86,6 +90,8 @@ export function getMonthItems(ledger: Ledger, month: string): LedgerItem[] {
       date,
       month,
       recurrenceId: r.id,
+      // O pagamento é POR MÊS: só este mês conta
+      paidAt: r.type === 'despesa' ? r.payments[month] : undefined,
     })
   }
 
@@ -135,6 +141,7 @@ export function createEntry(ledger: Ledger, entry: NewEntry): Ledger {
     dayOfMonth: dayOf(entry.date),
     ...(entry.endDate ? { endDate: entry.endDate } : {}),
     exceptions: {},
+    payments: {},
   }
   return { ...ledger, recurrences: [...ledger.recurrences, recurrence] }
 }
@@ -180,10 +187,15 @@ function endBefore(recurrence: Recurrence, month: string): Recurrence {
   const exceptions = Object.fromEntries(
     Object.entries(recurrence.exceptions).filter(([key]) => key < month),
   )
+  // Pagamentos de meses que deixam de existir também saem
+  const payments = Object.fromEntries(
+    Object.entries(recurrence.payments).filter(([key]) => key < month),
+  )
   return {
     ...recurrence,
     endDate: dateForMonth(addMonths(month, -1), recurrence.dayOfMonth),
     exceptions,
+    payments,
   }
 }
 
@@ -211,7 +223,14 @@ export function deleteItem(ledger: Ledger, item: LedgerItem, scope: Scope): Ledg
 
   const updated: Recurrence =
     scope === 'one'
-      ? { ...recurrence, exceptions: { ...recurrence.exceptions, [item.month]: { deleted: true } } }
+      ? {
+          ...recurrence,
+          exceptions: { ...recurrence.exceptions, [item.month]: { deleted: true } },
+          // Mês excluído não precisa mais guardar pagamento
+          payments: Object.fromEntries(
+            Object.entries(recurrence.payments).filter(([key]) => key !== item.month),
+          ),
+        }
       : endBefore(recurrence, item.month)
   return {
     ...ledger,
@@ -278,9 +297,45 @@ export function editItem(ledger: Ledger, item: LedgerItem, scope: Scope, rawPatc
     id: crypto.randomUUID(),
     startDate: dateForMonth(item.month, recurrence.dayOfMonth),
     exceptions: clearFields(tailExceptions, fields),
+    // Os pagamentos de deste mês em diante acompanham a regra nova
+    payments: Object.fromEntries(
+      Object.entries(recurrence.payments).filter(([key]) => key >= item.month),
+    ),
   }
   return {
     ...ledger,
     recurrences: [...replaceRecurrence(ledger.recurrences, recurrence.id, head), tail],
+  }
+}
+
+// ---------- Pagamento ----------
+
+// Marca UM item como pago (com a data de pagamento) ou volta para pendente (null).
+// - despesa avulsa ou parcela: grava/remove `paidAt` só naquela transação;
+// - recorrente: grava/remove o pagamento só DAQUELE mês;
+// - receita: não tem pagamento, não muda nada.
+export function setPaid(ledger: Ledger, item: LedgerItem, paidAt: string | null): Ledger {
+  if (item.type !== 'despesa') return ledger
+
+  if (item.kind !== 'recurring') {
+    return {
+      ...ledger,
+      transactions: ledger.transactions.map((t) => {
+        if (t.id !== item.transactionId) return t
+        if (paidAt) return { ...t, paidAt }
+        const { paidAt: _removed, ...unpaid } = t
+        return unpaid
+      }),
+    }
+  }
+
+  const recurrence = ledger.recurrences.find((r) => r.id === item.recurrenceId)
+  if (!recurrence) return ledger
+  const payments = { ...recurrence.payments }
+  if (paidAt) payments[item.month] = paidAt
+  else delete payments[item.month]
+  return {
+    ...ledger,
+    recurrences: replaceRecurrence(ledger.recurrences, recurrence.id, { ...recurrence, payments }),
   }
 }

@@ -38,6 +38,8 @@ create table if not exists public.transactions (
   installment_group_id uuid,
   installment_number integer,
   installment_total integer,
+  -- Data em que a despesa foi marcada como paga (vazio = pendente)
+  paid_at date,
   created_at timestamptz not null default now(),
   -- Ou os três campos de parcela estão vazios, ou os três estão preenchidos
   constraint transactions_installment_check check (
@@ -71,12 +73,27 @@ create table if not exists public.recurrences (
   end_date date, -- vazio = sem data final
   -- Mudanças só de um mês, ex.: {"2026-03": {"deleted": true}}
   exceptions jsonb not null default '{}'::jsonb,
+  -- Pagamento por mês, ex.: {"2026-01": "2026-01-10"} = janeiro pago em 10/01
+  payments jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   constraint recurrences_end_after_start check (end_date is null or end_date >= start_date)
 );
 
 create index if not exists recurrences_user_idx
   on public.recurrences (user_id);
+
+
+-- ---------------------------------------------------------------------
+-- 3b) CONTROLE DE PAGAMENTO (para bancos que JÁ existiam antes desta versão)
+--     "add column if not exists": não apaga nada e pode rodar de novo.
+--     As regras de segurança (RLS) abaixo valem para a linha inteira,
+--     então cobrem as colunas novas automaticamente.
+-- ---------------------------------------------------------------------
+alter table public.transactions
+  add column if not exists paid_at date;
+
+alter table public.recurrences
+  add column if not exists payments jsonb not null default '{}'::jsonb;
 
 
 -- ---------------------------------------------------------------------

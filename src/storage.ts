@@ -10,6 +10,11 @@ import type { Recurrence, Transaction, User } from './types'
 const USERS_KEY = 'financeiro:users'
 const IMPORTED_PREFIX = 'financeiro:imported:'
 const PENDING_PHOTO_PREFIX = 'financeiro:pending-photo:'
+const ALERT_DISMISSED_PREFIX = 'financeiro:alert-dismissed:'
+const ALERT_NOTIFIED_PREFIX = 'financeiro:alert-notified:'
+
+// Recorrência como pode aparecer nos dados antigos do navegador (sem "payments")
+type LegacyRecurrence = Omit<Recurrence, 'payments'> & { payments?: Record<string, string> }
 
 function readJson(key: string): unknown {
   try {
@@ -39,11 +44,12 @@ function isTransaction(value: unknown): value is Transaction {
     (t.type === 'receita' || t.type === 'despesa') &&
     typeof t.category === 'string' &&
     typeof t.date === 'string' &&
-    (t.installment === undefined || isInstallmentInfo(t.installment))
+    (t.installment === undefined || isInstallmentInfo(t.installment)) &&
+    (t.paidAt === undefined || typeof t.paidAt === 'string')
   )
 }
 
-function isRecurrence(value: unknown): value is Recurrence {
+function isRecurrence(value: unknown): value is LegacyRecurrence {
   if (typeof value !== 'object' || value === null) return false
   const r = value as Record<string, unknown>
   return (
@@ -56,8 +62,14 @@ function isRecurrence(value: unknown): value is Recurrence {
     typeof r.dayOfMonth === 'number' &&
     (r.endDate === undefined || typeof r.endDate === 'string') &&
     typeof r.exceptions === 'object' &&
-    r.exceptions !== null
+    r.exceptions !== null &&
+    (r.payments === undefined || (typeof r.payments === 'object' && r.payments !== null))
   )
+}
+
+// Dados antigos não têm "payments": passam a ter, vazio (tudo pendente)
+function normalizeRecurrence(r: LegacyRecurrence): Recurrence {
+  return { ...r, payments: r.payments ?? {} }
 }
 
 function isUser(value: unknown): value is User {
@@ -99,7 +111,9 @@ export function loadLocalAccounts(): LocalAccount[] {
       email: user.email,
       photo: user.photo,
       transactions: Array.isArray(transactions) ? transactions.filter(isTransaction) : [],
-      recurrences: Array.isArray(recurrences) ? recurrences.filter(isRecurrence) : [],
+      recurrences: Array.isArray(recurrences)
+        ? recurrences.filter(isRecurrence).map(normalizeRecurrence)
+        : [],
       imported: localStorage.getItem(IMPORTED_PREFIX + user.id) !== null,
     }
   })
@@ -111,6 +125,44 @@ export function markLocalAccountImported(localUserId: string, cloudUserId: strin
     localStorage.setItem(IMPORTED_PREFIX + localUserId, cloudUserId)
   } catch {
     // sem problema: o botão só continua aparecendo (importar de novo não duplica)
+  }
+}
+
+// ---------- Aviso de vencimentos (por usuário) ----------
+
+// Dia (aaaa-mm-dd, fuso de São Paulo) em que a pessoa dispensou o aviso do topo.
+// O aviso fica escondido até o dia mudar.
+export function getAlertDismissedDate(userId: string): string | null {
+  try {
+    return localStorage.getItem(ALERT_DISMISSED_PREFIX + userId)
+  } catch {
+    return null
+  }
+}
+
+export function setAlertDismissedDate(userId: string, date: string): void {
+  try {
+    localStorage.setItem(ALERT_DISMISSED_PREFIX + userId, date)
+  } catch {
+    // sem espaço: o aviso só volta a aparecer ao recarregar
+  }
+}
+
+// Dia em que o navegador já mostrou a notificação de vencimentos
+// (para avisar no máximo uma vez por dia).
+export function getAlertNotifiedDate(userId: string): string | null {
+  try {
+    return localStorage.getItem(ALERT_NOTIFIED_PREFIX + userId)
+  } catch {
+    return null
+  }
+}
+
+export function setAlertNotifiedDate(userId: string, date: string): void {
+  try {
+    localStorage.setItem(ALERT_NOTIFIED_PREFIX + userId, date)
+  } catch {
+    // sem espaço: pode avisar de novo ao recarregar
   }
 }
 

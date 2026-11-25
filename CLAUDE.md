@@ -66,10 +66,24 @@ App web de controle financeiro pessoal. O usuário é **iniciante em programaç�
 - Recorrências ficam na tabela `recurrences` (por usuário, protegida por RLS).
 - A lógica fica em `src/utils/schedule.ts` e `src/utils/ledger.ts` (funções puras, sem tela). Toda mudança nelas exige rodar `npm test`.
 
+## Pagamento e alertas de vencimento
+
+- **Só despesas** têm status de pagamento. Receitas nunca têm `paidAt`, status, botão nem aparecem no aviso (`setPaid` ignora receitas).
+- **Onde fica o pagamento:** despesa avulsa ou parcela → `Transaction.paidAt` (data aaaa-mm-dd em que foi marcada como paga; coluna `transactions.paid_at`). Recorrente → `Recurrence.payments`, um mapa **mês → data do pagamento** (coluna `recurrences.payments`, jsonb): a conta de janeiro paga não paga a de fevereiro. O status em si **não é guardado**, é calculado (`paymentStatus` em `src/utils/payment.ts`).
+- **Status:** `Paga` (tem data de pagamento), `Vencida` (sem pagamento e `date < hoje`), `Pendente` (resto; vencer **hoje** ainda é pendente). Na lista: etiquetas Paga (verde), Pendente (âmbar), Vencida (vermelha) e botão "Marcar paga"/"Desfazer", um clique, só naquele item/mês. A data do pagamento é "hoje" em São Paulo.
+- **Data de hoje = fuso `America/Sao_Paulo`** (`todayInSaoPaulo` em `src/utils/dates.ts`, via `Intl`), **nunca UTC** nem o fuso do aparelho. `todayISO()` delega para ela. `useToday` atualiza a data na virada do dia. As funções puras recebem `today` como parâmetro (testável).
+- **Resumo do mês:** cartões "Pago" e "A pagar" (A pagar = pendentes + vencidas; mostra quanto já venceu). `monthPaymentTotals`.
+- **Aviso no topo** (`DueAlertBanner`): despesas **pendentes** que vencem amanhã, hoje e as vencidas, com "Marcar como paga" em cada uma. As vencidas consideram só os **últimos 60 dias** (`ALERT_LOOKBACK_DAYS`), para despesas antigas de antes do recurso não lotarem o aviso; na lista do mês continuam "Vencida". O aviso consulta os meses da janela até o mês de amanhã (cruza mês e ano).
+- **"Dispensar por hoje":** guarda a data (São Paulo) em `storage.ts` (`financeiro:alert-dismissed:<userId>`); volta no dia seguinte.
+- **Notificações do navegador:** só por botão ("Ativar notificações"), **nunca automático** (`NotificationPrompt`, `useDueNotifications`). Mostram no máximo **uma por dia** (`financeiro:alert-notified:<userId>`) e só com o app aberto. Em celulares, o navegador costuma exigir um app instalado (PWA) para `new Notification`; sem isso, o aviso do topo continua funcionando e a notificação simplesmente não aparece.
+- **Ao editar/dividir recorrências:** os pagamentos acompanham o mês (a regra antiga fica com os meses anteriores, a nova com os de "este mês" em diante). Excluir um mês ou "este mês e os próximos" descarta os pagamentos dos meses que deixam de existir. Editar não apaga pagamentos.
+- **Banco:** rodar o SQL **antes** de publicar o código novo (`supabase/schema.sql`, seção 3b: `alter table ... add column if not exists`). Sem as colunas, toda gravação falha (400). A RLS não muda: vale para a linha inteira. Dados antigos (sem `payments`) são lidos como "tudo pendente".
+- A lógica fica em `src/utils/payment.ts`, `src/utils/dates.ts` e `setPaid` em `src/utils/ledger.ts` (funções puras, com testes).
+
 ## Testes
 
 - Vitest. Rodar com `npm test` (testes ao lado do código, em `*.test.ts`).
-- Cobrem: divisão em centavos, meses de 28/29/30/31 dias, virada de ano, recorrências, criar/editar/excluir em cada alcance, conversão linha↔objeto (centavos inteiros), diff para o banco, preparação da importação, tradução de erros do login e da recuperação de senha, validação da nova senha, leitura do endereço do link e montagem do `redirectTo`.
+- Cobrem: divisão em centavos, meses de 28/29/30/31 dias, virada de ano, recorrências, criar/editar/excluir em cada alcance, conversão linha↔objeto (centavos inteiros), diff para o banco, preparação da importação, tradução de erros do login e da recuperação de senha, validação da nova senha, leitura do endereço do link e montagem do `redirectTo`, data de São Paulo (virada UTC e de ano), status Paga/Pendente/Vencida, alertas (hoje, amanhã, vencidas, janela de 60 dias, dia 31, virada de ano), totais Pago/A pagar, pagamento por mês das recorrências, pagamento de parcelas e o que vai para o banco.
 - A parte que fala com o Supabase de verdade (`cloud.ts`, `auth.ts`, hooks) **não tem teste automático**: testar à mão contra um projeto real.
 
 ## Hospedagem (GitHub Pages)
@@ -126,4 +140,5 @@ npm test         # roda os testes automáticos (Vitest)
 - [x] Despesas parceladas e recorrentes, com testes automáticos
 - [x] Sincronização entre aparelhos com Supabase (Auth + tabelas com RLS + importação única dos dados locais)
 - [x] Recuperação de senha por e-mail (Supabase Auth)
+- [x] Controle de pagamento (Paga/Pendente/Vencida), totais Pago/A pagar, aviso de vencimentos e notificações opcionais
 - [ ] Ideias futuras: atualização em tempo real entre aparelhos, PWA/offline,  editar transação, exportar/importar dados (backup), metas por categoria

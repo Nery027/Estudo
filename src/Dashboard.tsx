@@ -3,17 +3,26 @@ import type { AuthResult } from './auth'
 import { Avatar } from './components/Avatar'
 import { CategoryChart } from './components/CategoryChart'
 import { DeleteDialog } from './components/DeleteDialog'
+import { DueAlertBanner } from './components/DueAlertBanner'
 import { EditTransactionModal } from './components/EditTransactionModal'
 import { ImportLocalDataBanner } from './components/ImportLocalDataBanner'
+import { NotificationPrompt } from './components/NotificationPrompt'
 import { ProfileModal } from './components/ProfileModal'
 import { MonthlyChart } from './components/MonthlyChart'
 import { Summary } from './components/Summary'
 import { TransactionForm } from './components/TransactionForm'
 import { TransactionList } from './components/TransactionList'
+import { useDueNotifications, useNotificationPermission } from './hooks/useDueNotifications'
+import { useToday } from './hooks/useToday'
 import { useTransactions } from './hooks/useTransactions'
+import { getAlertDismissedDate, setAlertDismissedDate } from './storage'
 import type { PublicUser } from './types'
-import { addMonths, formatMonth, monthKey, todayISO } from './utils/format'
+import { addMonths, formatMonth, monthKey } from './utils/format'
 import type { LedgerItem } from './utils/ledger'
+import { collectDueAlerts, monthPaymentTotals } from './utils/payment'
+import type { DueAlerts } from './utils/payment'
+
+const NO_ALERTS: DueAlerts = { overdue: [], today: [], tomorrow: [] }
 
 interface Props {
   user: PublicUser
@@ -23,17 +32,46 @@ interface Props {
 
 // A tela principal do controle financeiro (só aparece para quem está logado).
 export default function Dashboard({ user, onLogout, onSavePhoto }: Props) {
-  const { status, syncError, dismissError, reload, getItems, addEntry, removeItem, updateItem } =
-    useTransactions(user.id)
-  const [month, setMonth] = useState(monthKey(todayISO()))
+  const {
+    status,
+    syncError,
+    dismissError,
+    reload,
+    getItems,
+    addEntry,
+    removeItem,
+    updateItem,
+    markPaid,
+  } = useTransactions(user.id)
+  // "Hoje" em São Paulo (se atualiza sozinho na virada do dia)
+  const today = useToday()
+  const [month, setMonth] = useState(() => monthKey(today))
   const [profileOpen, setProfileOpen] = useState(false)
   const [editing, setEditing] = useState<LedgerItem | null>(null)
   const [deleting, setDeleting] = useState<LedgerItem | null>(null)
+  const [dismissedDate, setDismissedDate] = useState(() => getAlertDismissedDate(user.id))
+  const { permission, enable: enableNotifications } = useNotificationPermission()
 
   const monthLabel = formatMonth(month)
 
   // Tudo do mês escolhido: transações, parcelas e recorrências
   const monthItems = getItems(month)
+  const totals = monthPaymentTotals(monthItems, today)
+
+  // Aviso de vencimentos: contas pendentes que vencem amanhã, hoje ou já venceram
+  const alerts = status === 'ready' ? collectDueAlerts(getItems, today) : NO_ALERTS
+  const dismissedToday = dismissedDate === today
+  useDueNotifications({ userId: user.id, alerts, today, permission, dismissedToday })
+
+  function dismissAlerts() {
+    setAlertDismissedDate(user.id, today)
+    setDismissedDate(today)
+  }
+
+  // Um clique: paga (com a data de hoje) ou volta para pendente
+  function togglePaid(item: LedgerItem, paid: boolean) {
+    markPaid(item, paid ? today : null)
+  }
 
   let incomeCents = 0
   let expenseCents = 0
@@ -147,13 +185,35 @@ export default function Dashboard({ user, onLogout, onSavePhoto }: Props) {
 
         {status === 'ready' && (
           <>
+            {!dismissedToday && (
+              <DueAlertBanner
+                alerts={alerts}
+                onMarkPaid={(item) => togglePaid(item, true)}
+                onDismiss={dismissAlerts}
+              />
+            )}
+
+            <NotificationPrompt permission={permission} onEnable={enableNotifications} />
+
             <ImportLocalDataBanner user={user} onSavePhoto={onSavePhoto} onImported={reload} />
 
-            <Summary incomeCents={incomeCents} expenseCents={expenseCents} />
+            <Summary
+              incomeCents={incomeCents}
+              expenseCents={expenseCents}
+              paidCents={totals.paidCents}
+              pendingCents={totals.pendingCents}
+              overdueCents={totals.overdueCents}
+            />
 
             <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
               <TransactionForm onAdd={addEntry} />
-              <TransactionList items={monthItems} onEdit={setEditing} onDelete={setDeleting} />
+              <TransactionList
+                items={monthItems}
+                today={today}
+                onEdit={setEditing}
+                onDelete={setDeleting}
+                onTogglePaid={togglePaid}
+              />
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">

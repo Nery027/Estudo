@@ -14,6 +14,8 @@ export interface TransactionRow {
   installment_group_id: string | null
   installment_number: number | null
   installment_total: number | null
+  // Data do pagamento (aaaa-mm-dd) ou null se pendente
+  paid_at: string | null
 }
 
 export interface RecurrenceRow {
@@ -27,6 +29,8 @@ export interface RecurrenceRow {
   day_of_month: number
   end_date: string | null
   exceptions: Record<string, RecurrenceException>
+  // "aaaa-mm" -> data do pagamento daquele mês. Pode vir vazio/nulo de bancos antigos.
+  payments: Record<string, string> | null
 }
 
 function toType(value: string): TransactionType {
@@ -52,6 +56,7 @@ export function transactionToRow(t: Transaction, userId: string): TransactionRow
     installment_group_id: t.installment?.groupId ?? null,
     installment_number: t.installment?.number ?? null,
     installment_total: t.installment?.total ?? null,
+    paid_at: t.paidAt ?? null,
   }
 }
 
@@ -75,6 +80,7 @@ export function rowToTransaction(row: TransactionRow): Transaction {
       total: row.installment_total,
     }
   }
+  if (row.paid_at) transaction.paidAt = row.paid_at
   return transaction
 }
 
@@ -90,6 +96,7 @@ export function recurrenceToRow(r: Recurrence, userId: string): RecurrenceRow {
     day_of_month: r.dayOfMonth,
     end_date: r.endDate ?? null,
     exceptions: r.exceptions,
+    payments: r.payments,
   }
 }
 
@@ -103,6 +110,7 @@ export function rowToRecurrence(row: RecurrenceRow): Recurrence {
     startDate: row.start_date,
     dayOfMonth: row.day_of_month,
     exceptions: row.exceptions ?? {},
+    payments: row.payments ?? {},
   }
   if (row.end_date) recurrence.endDate = row.end_date
   return recurrence

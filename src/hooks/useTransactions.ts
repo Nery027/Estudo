@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchLedger, pushDiff } from '../cloud'
 import type { NewEntry } from '../types'
-import { createEntry, deleteItem, editItem, getMonthItems } from '../utils/ledger'
+import { createEntry, deleteItem, editItem, getMonthItems, setPaid } from '../utils/ledger'
 import type { ItemPatch, Ledger, LedgerItem, Scope } from '../utils/ledger'
 import { diffLedger, isEmptyDiff } from '../utils/ledgerDiff'
 
@@ -101,5 +101,8 @@ export function useTransactions(userId: string) {
       commit(deleteItem(ledgerRef.current, item, scope)),
     updateItem: (item: LedgerItem, scope: Scope, patch: ItemPatch) =>
       commit(editItem(ledgerRef.current, item, scope, patch)),
+    // Marca um item como pago (com a data de pagamento) ou volta para pendente (null)
+    markPaid: (item: LedgerItem, paidAt: string | null) =>
+      commit(setPaid(ledgerRef.current, item, paidAt)),
   }
 }

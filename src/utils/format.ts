@@ -1,4 +1,5 @@
 // Funções de formatação (moeda, datas, meses) em português do Brasil.
+import { todayInSaoPaulo } from './dates'
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -17,12 +18,9 @@ export function formatDate(iso: string): string {
   return `${day}/${month}/${year}`
 }
 
-// Data de hoje no formato aaaa-mm-dd, no fuso do usuário
+// Data de hoje no formato aaaa-mm-dd, no fuso de São Paulo (nunca UTC)
 export function todayISO(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
+  return todayInSaoPaulo()
 }
 
 // "2026-11-16" -> "2026-11"

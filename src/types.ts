@@ -14,6 +14,9 @@ export interface Transaction {
   // Só existe quando a transação é uma parcela de uma compra parcelada.
   // Todas as parcelas da mesma compra têm o mesmo groupId.
   installment?: { groupId: string; number: number; total: number }
+  // Data (aaaa-mm-dd, fuso de São Paulo) em que a despesa foi marcada como paga.
+  // Sem valor = pendente. Receitas nunca têm esse campo.
+  paidAt?: string
 }
 
 // Mudanças pontuais de uma recorrência em UM mês (editar ou excluir só aquele mês)
@@ -39,6 +42,9 @@ export interface Recurrence {
   endDate?: string // aaaa-mm-dd; sem valor = sem fim
   // Chave = mês "aaaa-mm"
   exceptions: Record<string, RecurrenceException>
+  // Pagamento POR MÊS: "aaaa-mm" -> data em que aquele mês foi marcado como pago.
+  // Mês sem entrada = pendente (a conta de janeiro paga não paga a de fevereiro).
+  payments: Record<string, string>
 }
 
 // O que o formulário entrega ao app para criar algo novo

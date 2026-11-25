@@ -37,6 +37,7 @@ const rent: Recurrence = {
   dayOfMonth: 31,
   endDate: '2026-12-31',
   exceptions: { '2026-03': { deleted: true }, '2026-04': { amountCents: 99900 } },
+  payments: { '2026-01': '2026-01-30', '2026-02': '2026-02-27' },
 }
 
 describe('transações <-> linhas do banco', () => {
@@ -77,7 +78,41 @@ describe('transações <-> linhas do banco', () => {
   })
 })
 
+describe('pagamento de transações <-> linhas do banco', () => {
+  it('despesa paga: a data do pagamento vai para paid_at e volta igual', () => {
+    const paid: Transaction = { ...parcel, paidAt: '2026-11-20' }
+    const row = transactionToRow(paid, USER)
+    expect(row.paid_at).toBe('2026-11-20')
+    expect(rowToTransaction(row)).toEqual(paid)
+  })
+
+  it('despesa pendente: paid_at é null e o objeto não ganha paidAt', () => {
+    const row = transactionToRow(single, USER)
+    expect(row.paid_at).toBeNull()
+    expect('paidAt' in rowToTransaction(row)).toBe(false)
+  })
+
+  it('banco antigo (sem a coluna paid_at, valor ausente) é lido como pendente', () => {
+    const row = { ...transactionToRow(single, USER), paid_at: undefined } as unknown as TransactionRow
+    expect(rowToTransaction(row).paidAt).toBeUndefined()
+  })
+})
+
 describe('recorrências <-> linhas do banco', () => {
+  it('pagamentos por mês vão em payments e voltam iguais', () => {
+    const row = recurrenceToRow(rent, USER)
+    expect(row.payments).toEqual({ '2026-01': '2026-01-30', '2026-02': '2026-02-27' })
+    expect(rowToRecurrence(row).payments).toEqual(rent.payments)
+  })
+
+  it('payments nulo ou ausente (banco antigo) vira vazio, nunca quebra', () => {
+    expect(rowToRecurrence({ ...recurrenceToRow(rent, USER), payments: null }).payments).toEqual({})
+    const old = { ...recurrenceToRow(rent, USER), payments: undefined } as unknown as ReturnType<
+      typeof recurrenceToRow
+    >
+    expect(rowToRecurrence(old).payments).toEqual({})
+  })
+
   it('ida e volta mantém dia 31, data final e exceções', () => {
     const row = recurrenceToRow(rent, USER)
     expect(row.day_of_month).toBe(31)
